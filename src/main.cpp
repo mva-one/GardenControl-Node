@@ -6,6 +6,7 @@
 
 void setup()
 {
+  WiFi.mode(WIFI_STA);
   Serial.begin(115200);
   WiFiManager wifiManager;
 
@@ -16,6 +17,10 @@ void setup()
 
   // if you get here you have connected to the WiFi
   Serial.println("connected...yeey :)");
+  Serial.print("Connected to ");
+  Serial.println(WiFi.SSID());
+  Serial.print("IP address:\t");
+  Serial.println(WiFi.localIP());
 }
 
 void loop()
