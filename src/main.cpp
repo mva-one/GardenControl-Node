@@ -3,6 +3,7 @@
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
+#include <ArduinoJson.h>
 
 
 ESP8266WebServer server(80);
@@ -17,7 +18,7 @@ unsigned long millis_now;
 
 // INTERVAL: set output state to target
 unsigned long prev_millis_output;
-unsigned long const intv_millis_output = 500;
+unsigned long const intv_millis_output = 200;
 
 // INTERVAL: get sensor measurements
 unsigned long prev_millis_sensors;
@@ -29,27 +30,12 @@ unsigned long prev_millis_dms;
 unsigned long const intv_millis_dms = 11000;
 
 
-void server_handle_notFound() {
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  for (uint8_t i = 0; i < server.args(); i++) {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
-  server.send(404, "text/plain", message);
-}
-
-// This function returns 'true' if any of the 8 current output channel states mismatches with the output target states
-bool output_set_needed() {
+// This function returns 'false' if any of the 8 current output channel states mismatches with the output target states
+bool output_matching_target() {
   for (int i=0; i<8; i++) {
-    if (output_state[i] != output_target[i]) return true;
+    if (output_state[i] != output_target[i]) return false;
   }
-  return false;
+  return true;
 }
 
 // set the physical outputs to the state they should be in.
@@ -66,6 +52,49 @@ void instant_all_off() {
   for (int i = 0; i<8; i++) {
     output_target[i] = false;
   }
+}
+
+void server_handle_notFound() {
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  for (uint8_t i = 0; i < server.args(); i++) {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+  server.send(404, "text/plain", message);
+}
+
+void server_handle_get_status() {
+  const int capacity = JSON_OBJECT_SIZE(13);
+    StaticJsonDocument<capacity> doc;
+    doc["relay1"] = output_state[0] ? 1 : 0;
+    doc["relay2"] = output_state[1] ? 1 : 0;
+    doc["relay3"] = output_state[2] ? 1 : 0;
+    doc["relay4"] = output_state[3] ? 1 : 0;
+    doc["relay5"] = output_state[4] ? 1 : 0;
+    doc["relay6"] = output_state[5] ? 1 : 0;
+    doc["relay7"] = output_state[6] ? 1 : 0;
+    doc["relay8"] = output_state[7] ? 1 : 0;
+    doc["matchesTarget"] = output_matching_target() ? 1 : 0;
+    doc["changedByDMS"] = 0;
+    doc["rssi"] = WiFi.RSSI();
+    char jsonout[1024];
+    serializeJson(doc, jsonout);
+    server.send(200, "application/json", jsonout);
+}
+
+void server_handle_post_setOutput() {
+  
+}
+
+void server_set_routing() {
+  server.on("/status", HTTP_GET, server_handle_get_status);
+  server.on("/setOutput", HTTP_POST, server_handle_post_setOutput);
 }
 
 
@@ -89,6 +118,7 @@ void setup()
 
   // Start up HTTP server
   server.onNotFound(server_handle_notFound);
+  server_set_routing();
   server.begin();
   Serial.println("HTTP server started");
 }
@@ -111,7 +141,7 @@ void loop()
     prev_millis_output = millis_now;
 
     // Only do anything if the state of the outputs is not as it should be
-    if (output_set_needed()) setOutput();
+    if (!output_matching_target()) setOutput();
   }
 
   
